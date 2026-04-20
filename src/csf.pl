@@ -49,20 +49,29 @@ use ConfigServer::GetEthDev;
 use ConfigServer::Sendmail;
 use ConfigServer::LookUpIP qw(iplookup);
 
-umask(0177);
+umask( 0177 );
 
-our ($debug, $verbose, $version, $logintarget, $noowner, $warning, $accept, $ipscidr,
-     $ipv6reg, $ipv4reg,$ethdevin, $ethdevout, $ipscidr6, $eth6devin,
-	 $eth6devout, $statemodule, $logouttarget, $cleanreg, $slurpreg,
-	 $faststart, $urlget, $statemodulenew, $statemodule6new, $cxsreputation);
+our ( 
+	$IPTABLESLOCK,
+	$CSFLOCKFILE
+);
 
-our ($IPTABLESLOCK, $CSFLOCKFILE);
+our (
+	$debug, 		$verbose, 		$version, 			$logintarget, 		$noowner, 		$warning, 		$accept, 	$ipscidr,
+	$ipv6reg, 		$ipv4reg,		$ethdevin, 			$ethdevout, 		$ipscidr6, 		$eth6devin,
+	$eth6devout, 	$statemodule, 	$logouttarget, 		$cleanreg, 			$slurpreg,
+	$faststart, 	$urlget, 		$statemodulenew, 	$statemodule6new, 	$cxsreputation, @warnings
+);
 
-our (%input, %config, %ips, %ifaces, %messengerports,%sanitydefault,
-     %blocklists, %cxsports);
+our (
+	%input, 		%config, 		%ips, 			%ifaces, 		%messengerports,
+	%sanitydefault,	%blocklists, 	%cxsports
+);
 
-our (@ipset, @faststart4, @faststart6, @faststart4nat, @faststartipset,
-     @faststart6nat);
+our (
+	@ipset, 		@faststart4, 	@faststart6, 	@faststart4nat, @faststartipset,
+	@faststart6nat
+);
 
 # #
 #   Colors
@@ -122,7 +131,7 @@ my $bgYellowDark 	= "${esc}[1;38;5;15;48;5;172m";		# white on dark yellow/orange
 
 sub log_prepare
 {
-    my (%opts)          = @_;
+    my ( %opts )		= @_;
     my $level           = $opts{level}		|| 'INFO';      #  INFO, WARN, FAIL, PASS, DBUG
     my $msg             = $opts{msg}		|| '';
     my $color_prefix    = $opts{color}		|| '';
@@ -130,8 +139,8 @@ sub log_prepare
 
     $msg =~ s/\n+$//;
 
-    my $tag 			= sprintf("   %s %-5s%s", $color_prefix, $level, $end);
-    my $txt 			= sprintf("%s  %s%s", $greym, $msg, $end);
+    my $tag 			= sprintf( "   %s %-5s%s", $color_prefix, $level, $end );
+    my $txt 			= sprintf( "%s  %s%s", $greym, $msg, $end );
 
     # #
 	#	label (no tag)
@@ -160,18 +169,18 @@ sub log_prepare
 
 sub log_label
 {
-    my ($msg) = @_;
+    my ( $msg ) 	= @_;
     log_prepare(
-        msg         => $msg,
+        msg			=> $msg,
         label  		=> 1
     );
 }
 
 sub log_info
 {
-    my ($msg) = @_;
+    my ( $msg ) 	= @_;
     log_prepare(
-        msg         => $msg,
+        msg			=> $msg,
         level       => 'INFO',
         color       => $bgInfo,
     );
@@ -179,7 +188,7 @@ sub log_info
 
 sub log_warn
 {
-    my ($msg) = @_;
+    my ( $msg ) 	= @_;
     log_prepare(
         msg     	=> " $msg",
         level   	=> 'WARN',
@@ -189,7 +198,7 @@ sub log_warn
 
 sub log_fail
 {
-    my ($msg) = @_;
+    my ( $msg )		= @_;
     log_prepare(
         msg     	=> " $msg",
         level   	=> 'FAIL',
@@ -199,7 +208,7 @@ sub log_fail
 
 sub log_pass
 {
-    my ($msg) = @_;
+    my ( $msg )		= @_;
     log_prepare(
         msg     	=> "$msg",
         level   	=> 'PASS',
@@ -209,7 +218,7 @@ sub log_pass
 
 sub log_debug
 {
-    my ($msg) = @_;
+    my ( $msg )		= @_;
     log_prepare(
         msg     	=> " $msg",
         level   	=> 'DBUG',
@@ -232,24 +241,32 @@ $faststart 	= 0;
 &process_input;
 &load_config;
 
-$urlget = ConfigServer::URLGet->new($config{URLGET}, "csf/$version", $config{URLPROXY});
-unless (defined $urlget)
+# #
+#	URLGet Routing
+# #
+
+$urlget = ConfigServer::URLGet->new( $config{URLGET}, "csf/$version", $config{URLPROXY} );
+unless ( defined $urlget )
 {
-	if (-e $config{CURL} or -e $config{WGET})
+	if ( -e $config{CURL} or -e $config{WGET} )
 	{
 		$config{URLGET} = 3;
-		$urlget = ConfigServer::URLGet->new($config{URLGET}, "csf/$version", $config{URLPROXY});
-		print "*WARNING* URLGET set to use LWP but perl module is not installed, fallback to using CURL/WGET\n";
-		$warning .= "*WARNING* URLGET set to use LWP but perl module is not installed, fallback to using CURL/WGET\n";
+		$urlget 		= ConfigServer::URLGet->new($config{URLGET}, "csf/$version", $config{URLPROXY});
+		print 			"*WARNING* URLGET set to use LWP but perl module is not installed, fallback to using CURL/WGET\n";
+		$warning 		.= "*WARNING* URLGET set to use LWP but perl module is not installed, fallback to using CURL/WGET\n";
 	}
 	else
 	{
 		$config{URLGET} = 1;
-		$urlget = ConfigServer::URLGet->new($config{URLGET}, "csf/$version", $config{URLPROXY});
-		print "*WARNING* URLGET set to use LWP but perl module is not installed, reverting to HTTP::Tiny\n";
-		$warning .= "*WARNING* URLGET set to use LWP but perl module is not installed, reverting to HTTP::Tiny\n";
+		$urlget 		= ConfigServer::URLGet->new($config{URLGET}, "csf/$version", $config{URLPROXY});
+		print 			"*WARNING* URLGET set to use LWP but perl module is not installed, reverting to HTTP::Tiny\n";
+		$warning 		.= "*WARNING* URLGET set to use LWP but perl module is not installed, reverting to HTTP::Tiny\n";
 	}
 }
+
+# #
+#	ConfigServer Disabled; throw warning on most CSF flags passed.
+# #
 
 if ( ( -e "/etc/csf/csf.disable" ) and ( $input{command} ne "--enable" ) and ( $input{command} ne "-e" ) )
 {
@@ -257,7 +274,7 @@ if ( ( -e "/etc/csf/csf.disable" ) and ( $input{command} ne "--enable" ) and ( $
 	log_warn( "CSF and LFD have been ${redl}disabled${greym}! Use ${yellowl}'csf -e'${greym} to re-enable${end}" );
 
 	# #
-	#   Bypass warning for certain commands
+	#   Allow certain commands if CSF disabled; bypass warning
 	# #
 
 	my %valid_cmds = map { $_ => 1 } (
@@ -274,9 +291,7 @@ if ( ( -e "/etc/csf/csf.disable" ) and ( $input{command} ne "--enable" ) and ( $
 		"-lp",     "--listports",
 	);
 
-	my $ok = $valid_cmds{ $input{command} } ? 1 : 0;
-
-	unless ( $ok )
+	if ( !$valid_cmds{ $input{command} } )
 	{
 		exit 1;
 	}
@@ -326,32 +341,32 @@ sub sanitize
     return $text;
 }
 
-unless (-e $config{IPTABLES})
+if ( !-e $config{IPTABLES} )
 {
-	&error(__LINE__,"$config{IPTABLES} $config{IPTABLESWAIT} (iptables binary location) does not exist!")
+	&error( __LINE__, "$config{IPTABLES} $config{IPTABLESWAIT} (iptables binary location) does not exist!" )
 }
 
-if ($config{IPV6} and !(-e $config{IP6TABLES}))
+if ( $config{IPV6} and !( -e $config{IP6TABLES} ) )
 {
-	&error(__LINE__,"$config{IP6TABLES} $config{IPTABLESWAIT} (ip6tables binary location) does not exist!")
+	&error( __LINE__, "$config{IP6TABLES} $config{IPTABLESWAIT} (ip6tables binary location) does not exist!" )
 }
 
-if ((-e "/etc/csf/csf.error") and ($input{command} ne "--startf") and ($input{command} ne "-sf") and ($input{command} ne "-q") and ($input{command} ne "--startq") and ($input{command} ne "--start") and ($input{command} ne "-s") and ($input{command} ne "--restart") and ($input{command} ne "-r") and ($input{command} ne "--enable") and ($input{command} ne "-e"))
+if ( ( -e "/etc/csf/csf.error" ) and ( $input{command} ne "--startf" ) and ( $input{command} ne "-sf" ) and ( $input{command} ne "-q" ) and ( $input{command} ne "--startq" ) and ($input{command} ne "--start") and ($input{command} ne "-s") and ($input{command} ne "--restart") and ($input{command} ne "-r") and ($input{command} ne "--enable") and ($input{command} ne "-e"))
 {
-	open (my $IN, "<", "/etc/csf/csf.error");
-	flock ($IN, LOCK_SH);
+	open ( my $IN, "<", "/etc/csf/csf.error" );
+	flock ( $IN, LOCK_SH );
 	my $error = <$IN>;
-	close ($IN);
+	close ( $IN );
 	chomp $error;
 	print "You have an unresolved error when starting csf:\n$error\n\nYou need to restart csf successfully to remove this warning, or delete /etc/csf/csf.error\n";
 	exit 1;
 }
 
-unless ($input{command} =~ /^--(stop|initdown|initup)$/)
+if ( $input{command} !~ /^--(stop|initdown|initup)$/ )
 {
-	if (-e "/var/lib/csf/csf.4.saved") {unlink "/var/lib/csf/csf.4.saved"}
-	if (-e "/var/lib/csf/csf.4.ipsets") {unlink "/var/lib/csf/csf.4.ipsets"}
-	if (-e "/var/lib/csf/csf.6.saved") {unlink "/var/lib/csf/csf.6.saved"}
+	if ( -e "/var/lib/csf/csf.4.saved" ) 	{ unlink "/var/lib/csf/csf.4.saved" }
+	if ( -e "/var/lib/csf/csf.4.ipsets" )	{ unlink "/var/lib/csf/csf.4.ipsets" }
+	if ( -e "/var/lib/csf/csf.6.saved" ) 	{ unlink "/var/lib/csf/csf.6.saved" }
 }
 
 # #
@@ -361,9 +376,9 @@ unless ($input{command} =~ /^--(stop|initdown|initup)$/)
 if 		( ( $input{command} eq "--status" )			or ( $input{command} eq "-l" ) ) 	{ &dostatus }
 elsif 	( ( $input{command} eq "--status6" ) 		or ( $input{command} eq "-l6" ) ) 	{ &dostatus6 }
 elsif 	( ( $input{command} eq "--version" ) 		or ( $input{command} eq "-v" ) ) 	{ &doversion }
-elsif 	( ( $input{command} eq "--stop" )			or ( $input{command} eq "-f" ) ) 	{ &csflock("lock" );&dostop(0);&csflock("unlock" ) }
-elsif 	( ( $input{command} eq "--startf" ) 		or ( $input{command} eq "-sf" ) ) 	{ &csflock("lock" );&dostop(1);&dostart;&csflock("unlock" ) }
-elsif 	( ( $input{command} eq "--start" ) 			or ( $input{command} eq "-s" ) 		or ( $input{command} eq "--restart" ) or ( $input{command} eq "-r" ) ) {if ($config{LFDSTART}) {&lfdstart} else {&csflock("lock" );&dostop(1);&dostart;&csflock("unlock" )}}
+elsif 	( ( $input{command} eq "--stop" )			or ( $input{command} eq "-f" ) ) 	{ &csflock( "lock" );&dostop(0);&csflock( "unlock" ) }
+elsif 	( ( $input{command} eq "--startf" ) 		or ( $input{command} eq "-sf" ) ) 	{ &csflock( "lock" );&dostop(1);&dostart;&csflock( "unlock" ) }
+elsif 	( ( $input{command} eq "--start" ) 			or ( $input{command} eq "-s" ) 		or ( $input{command} eq "--restart" ) or ( $input{command} eq "-r" ) ) { if ( $config{LFDSTART} ) { &lfdstart } else { &csflock( "lock" );&dostop(1);&dostart;&csflock( "unlock" ) } }
 elsif 	( ( $input{command} eq "--startq" ) 		or ( $input{command} eq "-q" ) ) 	{ &lfdstart }
 elsif 	( ( $input{command} eq "--restartall" ) 	or ( $input{command} eq "-ra" ) ) 	{ &dorestartall }
 elsif 	( ( $input{command} eq "--add" ) 			or ( $input{command} eq "-a" ) ) 	{ &doadd }
@@ -372,8 +387,8 @@ elsif 	( ( $input{command} eq "--denyrm" ) 		or ( $input{command} eq "-dr" ) ) 	
 elsif 	( ( $input{command} eq "--denyf" ) 			or ( $input{command} eq "-df" ) ) 	{ &dokillall }
 elsif 	( ( $input{command} eq "--addrm" ) 			or ( $input{command} eq "-ar" ) ) 	{ &doakill }
 elsif 	( ( $input{command} eq "--update" ) 		or ( $input{command} eq "-u" ) 		or ( $input{command} eq "-uf" ) ) { &doupdate }
-elsif 	( ( $input{command} eq "--disable" ) 		or ( $input{command} eq "-x" ) ) 	{ &csflock("lock" );&dodisable;&csflock("unlock" ) }
-elsif 	( ( $input{command} eq "--enable" ) 		or ( $input{command} eq "-e" ) ) 	{ &csflock("lock" );&doenable;&csflock("unlock" ) }
+elsif 	( ( $input{command} eq "--disable" ) 		or ( $input{command} eq "-x" ) ) 	{ &csflock( "lock" );&dodisable;&csflock( "unlock" ) }
+elsif 	( ( $input{command} eq "--enable" ) 		or ( $input{command} eq "-e" ) ) 	{ &csflock( "lock" );&doenable;&csflock( "unlock" ) }
 elsif 	( ( $input{command} eq "--check" ) 			or ( $input{command} eq "-c" ) ) 	{ &docheck }
 elsif 	( ( $input{command} eq "--grep" )			or ( $input{command} eq "-g" ) ) 	{ &dogrep }
 elsif 	( ( $input{command} eq "--iplookup" )		or ( $input{command} eq "-i" ) ) 	{ &doiplookup }
@@ -427,9 +442,16 @@ if ( $config{TESTING} )
 	print "*WARNING* TESTING mode is enabled - do not forget to disable it in the configuration\n"
 }
 
+# #
+#	Autoupdates
+# #
+
 if ( $config{AUTO_UPDATES} )
 {
-	unless ( -e "/etc/cron.d/csf_update" ) { &autoupdates }
+	if ( ! -e "/etc/cron.d/csf_update" )
+	{
+		&autoupdates
+	}
 }
 elsif ( -e "/etc/cron.d/csf_update" )
 {
@@ -447,14 +469,24 @@ or ( $input{command} eq "-r" )
 or ( $input{command} eq "--restartall" )
 or ( $input{command} eq "-ra" ) )
 {
+
+	# #
+	#	Print stored warning
+	# #
+
 	if ( $warning )
 	{
 		print $warning
 	}
 
+	if ( @warnings )
+	{
+		$_->( ) for @warnings;
+	}
+
 	foreach my $key ( keys %config )
 	{
-		my ( $insane,$range,$default ) = ConfigServer::Sanity::sanity( $key,$config{$key} );
+		my ( $insane,$range,$default ) = ConfigServer::Sanity::sanity( $key, $config{$key} );
 		if ( $insane )
 		{
 			log_warn( "${yellowl}$key${greym} sanity check. ${yellowl}$key = $config{$key}${end}" );
@@ -462,7 +494,7 @@ or ( $input{command} eq "-ra" ) )
 		}
 	}
 
-	unless ( $config{RESTRICT_SYSLOG} )
+	if ( ! $config{RESTRICT_SYSLOG} )
 	{
 		log_warn( "${yellowl}RESTRICT_SYSLOG${greym} is disabled. See SECURITY WARNING in ${yellowl}/etc/csf/csf.conf${end}" );
 	}
@@ -502,14 +534,14 @@ exit 0;
 sub csflock
 {
 	my $lock = shift;
-	if ($lock eq "lock")
+	if ( $lock eq "lock" )
 	{
-		sysopen ($CSFLOCKFILE, "/var/lib/csf/csf.lock", O_RDWR | O_CREAT) or die ("Error: Unable to open csf lock file: $!");
-		flock ($CSFLOCKFILE, LOCK_EX | LOCK_NB) or die "Error: csf is being restarted, try again in a moment: $!";
+		sysopen ( $CSFLOCKFILE, "/var/lib/csf/csf.lock", O_RDWR | O_CREAT ) or die ( "Error: Unable to open csf lock file: $!" );
+		flock ( $CSFLOCKFILE, LOCK_EX | LOCK_NB ) or die "Error: csf is being restarted, try again in a moment: $!";
 	}
 	else
 	{
-		close ($CSFLOCKFILE);
+		close ( $CSFLOCKFILE );
 	}
 
 	return;
@@ -532,7 +564,7 @@ sub load_config
 	$ipv6reg 			= $config->ipv6reg;
 	$warning 			.= $config->{warning};
 
-	if ($config{CLUSTER_SENDTO} or $config{CLUSTER_RECVFROM})
+	if ( $config{CLUSTER_SENDTO} or $config{CLUSTER_RECVFROM} )
 	{
 		require Crypt::CBC;
 		import Crypt::CBC;
@@ -564,9 +596,13 @@ sub load_config
 		$verbose = "-v"
 	}
 
-	$logintarget = "LOG --log-prefix";
-	$logouttarget = "LOG --log-uid --log-prefix";
-	unless ($config{DROP_UID_LOGGING}) {$logouttarget = "LOG --log-prefix"}
+	$logintarget 	= "LOG --log-prefix";
+	$logouttarget 	= "LOG --log-uid --log-prefix";
+
+	if ( ! $config{DROP_UID_LOGGING} )
+	{
+		$logouttarget = "LOG --log-prefix"
+	}
 
 	$accept = "ACCEPT";
 	if ( $config{WATCH_MODE} )
@@ -583,9 +619,9 @@ sub load_config
 
 	if ( $config{MESSENGER} )
 	{
-		foreach my $port (split(/\,/,$config{MESSENGER_HTTPS_IN})) {$messengerports{$port} = 1}
-		foreach my $port (split(/\,/,$config{MESSENGER_HTML_IN})) {$messengerports{$port} = 1}
-		foreach my $port (split(/\,/,$config{MESSENGER_TEXT_IN})) {$messengerports{$port} = 1}
+		foreach my $port ( split(/\,/, $config{MESSENGER_HTTPS_IN} ) ) 	{ $messengerports{$port} = 1 }
+		foreach my $port ( split(/\,/, $config{MESSENGER_HTML_IN} ) ) 	{ $messengerports{$port} = 1 }
+		foreach my $port ( split(/\,/, $config{MESSENGER_TEXT_IN} ) ) 	{ $messengerports{$port} = 1 }
 	}
 	
 	$statemodule = "-m state --state";
@@ -603,7 +639,8 @@ sub load_config
 		$statemodulenew = "";
 	}
 
-	if ($config{IPV6_SPI}) {
+	if ( $config{IPV6_SPI} )
+	{
 		$statemodule6new = "$statemodule NEW";
 	}
 	else
@@ -611,12 +648,13 @@ sub load_config
 		$statemodule6new = "";
 	}
 
-	my @entries = slurp("/etc/csf/csf.blocklists");
-	foreach my $line (@entries)
+	my @entries = slurp( "/etc/csf/csf.blocklists" );
+	foreach my $line ( @entries )
 	{
-		if ($line =~ /^Include\s*(.*)$/) {
-			my @incfile = slurp($1);
-			push @entries,@incfile;
+		if ( $line =~ /^Include\s*(.*)$/ )
+		{
+			my @incfile = slurp( $1 );
+			push @entries, @incfile;
 		}
 	}
 
@@ -635,7 +673,7 @@ sub load_config
 		if ( $name =~ /^\w+$/ )
 		{
 			$name = substr( uc $name, 0, 25 );
-	
+
 			if ( $name =~ /^CXS_/) 							{ $name =~ s/^CXS_/X_CXS_/ }
 			if ( !length $interval || $interval < 3600 ) 	{ $interval = 3600 }
 			if ( $max eq "" ) 								{ $max = 0 }
@@ -657,13 +695,13 @@ sub load_config
 			my $all 	= 0;
 			my @lines 	= slurp( "/etc/cxs/cxs.blocklists" );
 	
-			if ( grep {$_ =~ /^CXS_ALL/} @lines ) { $all = 1 }
+			if ( grep { $_ =~ /^CXS_ALL/ } @lines ) { $all = 1 }
 	
-			foreach my $line (@lines)
+			foreach my $line ( @lines )
 			{
 				$line =~ s/$cleanreg//g;
 				if ( $line =~ /^(\s|\#|$)/ ) { next }
-				my ( $name, $interval, $max, $url ) = split(/\|/, $line );
+				my ( $name, $interval, $max, $url ) = split( /\|/, $line );
 
 				# Trim whitespace
 				for ( $name, $interval, $max, $url ) { s/^\s+|\s+$//g; }
@@ -671,14 +709,15 @@ sub load_config
 				if ( $all and $name ne "CXS_ALL" ) { next }
 				if ( $name =~ /^\w+$/ )
 				{
-					$name = substr( uc $name, 0, 25 );
-					if ( $max eq "" ) { $max = 0 }
+					$name 							= substr( uc $name, 0, 25 );
+					if ( $max eq "" ) 				{ $max = 0 }
 					$blocklists{$name}{interval} 	= $interval;
 					$blocklists{$name}{max} 		= $max;
 					$blocklists{$name}{url} 		= $url;
 				}
 			}
 		}
+
 		%cxsports = ConfigServer::cxs::Rports();
 	}
 
@@ -698,23 +737,25 @@ sub load_config
 	}
 
 	my $iphit = 0;
-	if (-e $config{IP} or -e $config{IFCONFIG}) {$iphit = 1}
-	unless ($iphit) {
+	if ( -e $config{IP} or -e $config{IFCONFIG} ) { $iphit = 1 }
+	if ( ! $iphit )
+	{
 		$warning .= "*WARNING* Binary location for either [IP] [$config{IP}] or [IFCONFIG] [$config{IFCONFIG}] in /etc/csf/csf.conf must be set correctly, installed and executable\n";
 		$hit = 1;
 	}
-	if ($hit) {$warning .= "*WARNING* Missing or incorrect binary locations will break csf and lfd functionality\n"}
+
+	if ( $hit )
+	{
+		$warning .= "*WARNING* Missing or incorrect binary locations will break csf and lfd functionality\n";
+	}
+
 	return;
 }
-
-# end load_config
-###############################################################################
-# start process_input
 
 sub process_input
 {
 	$input{command} = lc $ARGV[0];
-	for (my $x = 1;$x < @ARGV ;$x++)
+	for ( my $x = 1;$x < @ARGV ;$x++ )
 	{
 		$input{argument} .= $ARGV[$x] . " ";
 	}
@@ -733,7 +774,7 @@ sub dostatus
 	print "=====================\n";
 	&syscommand(__LINE__, 1, "$config{IPTABLES} $config{IPTABLESWAIT} -v -L -n --line-numbers");
 
-	if ($config{MANGLE})
+	if ( $config{MANGLE} )
 	{
 		print "\n\n";
 		print "iptables mangle table\n";
@@ -741,7 +782,7 @@ sub dostatus
 		&syscommand(__LINE__, 1, "$config{IPTABLES} $config{IPTABLESWAIT} -v -t mangle -L -n --line-numbers");
 	}
 
-	if ($config{RAW})
+	if ( $config{RAW} )
 	{
 		print "\n\n";
 		print "iptables raw table\n";
@@ -749,7 +790,7 @@ sub dostatus
 		&syscommand(__LINE__, 1, "$config{IPTABLES} $config{IPTABLESWAIT} -v -t raw -L -n --line-numbers");
 	}
 
-	if ($config{NAT})
+	if ( $config{NAT} )
 	{
 		print "\n\n";
 		print "iptables nat table\n";
